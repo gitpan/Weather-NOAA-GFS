@@ -14,10 +14,16 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.03";
+our $VERSION   = "0.04";
 
 # VERSION 0.03
 #	- no Perl Version check
+
+# VERSION 0.04
+#	- added gradsc_path parameter
+#	- added wgrib_path parameter
+#	- documentation corrections
+
 
 
 my $LOGFILE = "forecast.log";
@@ -73,7 +79,9 @@ sub new {
 	$self->{TEMP_DIR}       = $parameters{temp_dir}   if ( $parameters{temp_dir} );
 	$self->{MAIL_ANONYMOUS}       = $parameters{mail_anonymous}   if ( $parameters{mail_anonymous} );
 	$self->{CBARN_PATH}       = $parameters{cbarn_path}   if ( $parameters{cbarn_path} );	
-	$self->{R_PATH}       = $parameters{r_path}   if ( $parameters{r_path} );	
+	$self->{R_PATH}       = $parameters{r_path}   if ( $parameters{r_path} );
+	$self->{GRADSC_PATH}       = $parameters{gradsc_path}   if ( $parameters{gradsc_path} );
+	$self->{WGRIB_PATH}       = $parameters{wgrib_path}   if ( $parameters{wgrib_path} );	
 
 
 
@@ -83,6 +91,18 @@ sub new {
 		$self->_debug( "mail Ok!");
 	} else {
 		$self->_debug( "'mail_anonymous' is a mandatory parameter!");
+		exit
+	}
+	if($self->{GRADSC_PATH}){
+		$self->_debug( "mail Ok!");
+	} else {
+		$self->_debug( "'gradsc_path' is a mandatory parameter!");
+		exit
+	}
+	if($self->{WGRIB_PATH}){
+		$self->_debug( "mail Ok!");
+	} else {
+		$self->_debug( "'wgrib_path' is a mandatory parameter!");
 		exit
 	}
 	
@@ -456,7 +476,8 @@ sub ascii2idrisi {
 	#$self->{GRIB_FILES} = 'gblav.t*z.pgrbf*';
 		my @grib_files = glob 'gblav.t*z.pgrbf*';
 		#estraggo lo header del grib_file riga per riga
-		my @grib_vars = `wgrib -v $grib_files[0]`;
+		my $wgrib_path = $self->{WGRIB_PATH};
+		my @grib_vars = `$wgrib_path -v $grib_files[0]`;
 		
 		foreach my $line (@grib_vars) {
 			if($#grib_vars==0) {
@@ -544,7 +565,9 @@ sub grib2ascii {
 	#$self->{GRIB_FILES} = 'gblav.t*z.pgrbf*';
 	my @grib_files = glob 'gblav.t*z.pgrbf*';
 	#estraggo lo header del grib_file riga per riga
-	my @grib_vars = `wgrib -v $grib_files[0]`;
+	my $wgrib_path = $self->{WGRIB_PATH};
+	my @grib_vars = `$wgrib_path -v $grib_files[0]`;
+	#my @grib_vars = `wgrib -v $grib_files[0]`;
 
 	#VARS
 	my @text_files;
@@ -596,7 +619,7 @@ sub grib2ascii {
 			#$self->_debug("nome file: ".$txt_file);
 			push(@text_files,$txt_file); 
 			#$self->_debug("wgrib -s $grib_file | egrep \":$key:$value\" | wgrib -i -grib $grib_file -text -o $txt_file");
-			system("wgrib -s $grib_file | egrep \":$key:$value\" | wgrib -i -grib $grib_file -text -o $txt_file");
+			system($self->{WGRIB_PATH}." -s $grib_file | egrep \":$key:$value\" | ".$self->{WGRIB_PATH}." -i -grib $grib_file -text -o $txt_file");
 			
 			#all'ultimo giro creo i valori aggregati
 # 			if($index==@friends){
@@ -655,7 +678,8 @@ sub ascii2idrisi_avarage {
 		$index++;
 	}
 	
-	open(FOUT,">".$nome_file_out) || "Non apre file out\n";
+	open(FOUT,">$nome_file_out") || print "Non apre file out ($nome_file_out) \n";
+	
 	binmode(FOUT);
 	
 	
@@ -1082,8 +1106,8 @@ if ($self->{CBARN_PATH}) {
   close(OUT);
   
   ## 
-  system("gradsc -blc muletto\.gs");
-  print "idrisi2png conpleted\n";
+  system($self->{GRADSC_PATH}." -blc muletto\.gs");
+ # print "idrisi2png conpleted\n";
 }
 
 #########################################################################
@@ -1191,16 +1215,19 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
 
   
   # define parameters 
-  my %params = (
-		'minlon'   => -18,# mandatory
-		'maxlon'   => 49,# mandatory
-		'minlat'   => 3,# mandatory
-		'maxlat'   => 28,# mandatory
-		'mail_anonymous'    => 'my@mail.com',# mandatory to log NOAA ftp server
-		'debug'    => 1 # 0 no output - 1 output
+    my %params = (
+		'minlon'   => -5,# mandatory
+		'maxlon'   => 45,# mandatory
+		'minlat'   => 30,# mandatory
+		'maxlat'   => 50,# mandatory
+		'mail_anonymous'    => 'my@mail.org',# mandatory to log NOAA ftp server
+		'gradsc_path' => 'gradsc',# mandatory, needed to create maps
+		'wgrib_path' => 'wgrib',# mandatory, needed to process NOAA GRIB files
+		'debug'    => 1, # 0 no output - 1 output
 		'logfile'    => 'weather-noaa-gfs.log',# optional
 		'cbarn_path' => 'cbarn.gs', #optional, needed to print image legend
 		'r_path' => 'R',# optional, needed to downscale
+		
   );
   
   
@@ -1218,10 +1245,10 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
   
   #transform Grib files to Ascii files (needs GrADS's wgrib)
   
-  if($weather_gfs->grib2idrisi()){
-  	print "grib2idrisi succeded!!!";
+  if($weather_gfs->grib2ascii()){
+  	print "grib2ascii succeded!!!";
   } else {
-  	print "Error: grib2idrisi had problems!!!";
+  	print "Error: grib2ascii had problems!!!";
 	die;
   }
 
@@ -1235,7 +1262,7 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
   }
 
   
-  #itransform Idrisi files to Png images (needs GrADS's gradsc and cbarn.sc)
+  #itransform Idrisi files to Png images (needs GrADS's gradsc)
   if($weather_gfs->idrisi2png()){
   	print "idrisi2png succeded!!!";
   } else {
@@ -1257,12 +1284,14 @@ This module produces forecast climate maps from NOAA GFS site (http://nomad2.nce
      
 
 =head1 TO DO
+
 1) integration with R
 2) better image output
 
 
 =head1 SEE ALSO
-=head2Software needed:
+
+Software needed:
 
 GrADS - http://grads.iges.org/grads/grads.html
 used: wgrib, gradsc. Need cbarn.gs
@@ -1271,7 +1300,7 @@ R - http://www.r-project.org/
 add module GStat
 
 
-=head1 AUTHOR
+=head1 AUTHORS
 
 Alfonso Crisci, E<lt>crisci@ibimet.cnr.itE<gt>
 Valerio Capecchi, E<lt>capecchi@ibimet.cnr.itE<gt>

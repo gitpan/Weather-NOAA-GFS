@@ -11,3 +11,7 @@ Revision history for Perl extension Weather::NOAA::GFS.
 0.03  Thu Dec  9 12:25:21 2004
 	- remove perl version check
 
+0.04  Dec 14 2004
+	- added gradsc_path parameter
+	- added wgrib_path parameter
+	- documentation corrections
