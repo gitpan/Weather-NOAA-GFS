@@ -1,4 +1,4 @@
-Weather-NOAA-GFS version 0.04
+Weather-NOAA-GFS version 0.05
 =============================
 
 
@@ -23,13 +23,27 @@ LWP::UserAgent
 Net::FTP
 Data::Dumper
 Time::Local
+Cwd
 
 Extra Software:
 GrADS - http://grads.iges.org/grads/grads.html
-used: wgrib, gradsc. Need cbarn.gs
+used: wgrib, gradsc. Need cbarn.gs to show palette in PNG output
 
 R - http://www.r-project.org/
 add module GStat
+
+
+
+
+
+TO DO
+
+1) time control not to overload NOAA servers or to stop the script if it takes to much time.
+2) parameters in function to allow process of single or selected climate vectors (es: only rain and temperature).
+3) enlarge temperature palette for PNG output
+4) cleanUp function. To delete temporary file.
+5) working dir parameter.
+
 
 
 

@@ -1,6 +1,6 @@
 package Weather::NOAA::GFS;
 
-#use 5.006;
+
 use strict;
 use warnings;
 
@@ -9,20 +9,26 @@ use Net::FTP;
 use HTML::LinkExtractor;
 use Data::Dumper;
 use Time::Local;
+use Cwd;
 
 require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.04";
+our $VERSION   = "0.05";
 
-# VERSION 0.03
-#	- no Perl Version check
-
-# VERSION 0.04
-#	- added gradsc_path parameter
-#	- added wgrib_path parameter
-#	- documentation corrections
+## VERSIONS INFOS
+# 0.04  Dec 14 2004
+# 	- added gradsc_path parameter
+# 	- added wgrib_path parameter
+# 	- documentation corrections
+# 
+# 0.05  Jan 04 2005
+# 	- added downscale function (idrisiDownscale)
+# 	- vector wind grafic output
+# 	- corrections on rain png infos
+# 	- corrections on rain dayly rains calculation bug
+# 	- cleanUp function added
 
 
 
@@ -294,7 +300,7 @@ sub get_ftp_dir {
 }
 
 
-sub scarica_da_ftp {
+sub _ftpDownload {
 	#
 	##ARGV
 	my $self = shift;
@@ -307,7 +313,7 @@ sub scarica_da_ftp {
 	
 	##Module
 	use Net::FTP;
-	$self->_debug("scarico_da_ftp - ftpsite: ".$ftp_site);
+	$self->_debug("_ftpDownload- ftpsite: ".$ftp_site);
 	###############################################################
 	my $ftp_senza_ftp = $ftp_site;
 	my $prefisso_ftp = 'ftp://';
@@ -318,15 +324,15 @@ sub scarica_da_ftp {
 	#
 	##ISTANZIA OGGETTO FTP
 	if (!($ftp = Net::FTP->new($lista_dir[0], timeout=>3600))) {
-		$self->_debug("scarico_da_ftp: Non riesco a collegarmi con ftp $lista_dir[0]");
+		$self->_debug("_ftpDownload: Problems connecting to ftp site: $lista_dir[0]");
 	}
 #######	$ftp = Net::FTP->new("$lista_dir[0]", timeout=>3600) || $self->_debug("Non riesco a collegarmi con ftp $lista_dir[0]");
   	#
   	##CONNECT & LOGIN
-  	if (!($ftp->login('anonymous','pippo@topolino.org'))) {
-		$self->_debug("scarico_da_ftp: Non riesco login con ftp $lista_dir[0]");
+  	if (!($ftp->login('anonymous',$self->{MAIL_ANONYMOUS}))) {
+		$self->_debug("_ftpDownload: Error loggin: $lista_dir[0]");
 	} else {
-  		$self->_debug("scarico_da_ftp: Collegato e loggato su ftp $lista_dir[0] per scaricare grib files");
+  		$self->_debug("_ftpDownload: Connected and logged on $lista_dir[0]. downloading grib files...");
 	}
 #######	$ftp->login('anonymous','pippo@topolino.org')|| $self->_debug("Non riesco login con ftp $lista_dir[0]");
 ####### ###print STDOUT "\n***\tCOLLEGATO CON $lista_dir[0]\t***\n";
@@ -335,23 +341,23 @@ sub scarica_da_ftp {
 	##CHANGE DIR
   	my $new_dir='/'."$lista_dir[1]".'/'."$lista_dir[2]".'/'."$lista_dir[3]".'/';
   	if (!($ftp->cwd("$new_dir"))) {
-		$self->_debug("scarico_da_ftp: Non riesco a cambiare dir in $lista_dir[0]");
+		$self->_debug("_ftpDownload: Can't change dir in $lista_dir[0]");
 	} else {
-  		$self->_debug("scarico_da_ftp: Cambiata directory in $new_dir");
+  		$self->_debug("_ftpDownload:  Dir changed in $new_dir");
 	}
 #######	$ftp->cwd("$new_dir") || $self->_debug("Non riesco a cambiare dir in $lista_dir[0]");
 #######	$self->_debug("Cambiata directory in $new_dir");
   	
   	##GET FILES
   	if (!($ftp->binary)) {
-		$self->_debug("scarico_da_ftp: Non riesco a cambiare in binary mode");
+		$self->_debug("_ftpDownload: Can't change in binary mode");
 	} else {
-  		$self->_debug("scarico_da_ftp: Switch to binary mode");
+  		$self->_debug("_ftpDownload: Switch to binary mode");
 	}
 	if (!( @lista_grib= $ftp->ls("gblav*pgrbf*"))) {
-		$self->_debug("scarico_da_ftp: Non riesco retrieve lista grib files");
+		$self->_debug("_ftpDownload: Can't retrieve grib files array");
 	} else {
-  		$self->_debug("scarico_da_ftp: Retrieve grib files array");
+  		$self->_debug("_ftpDownload: Retrieve grib files array");
 	}
 #######	$ftp->binary;	
 #######	@lista_grib=$ftp->ls("gblav*pgrbf*");
@@ -360,29 +366,29 @@ sub scarica_da_ftp {
   	foreach my $gfile (@lista_grib) {
   		while (!($ftp->get("$gfile"))) {
   			if (!($ftp = Net::FTP->new("$lista_dir[0]", timeout=>3600))) {
-				$self->_debug("scarico_da_ftp: Non riesco a collegarmi con ftp $lista_dir[0]");
+				$self->_debug("_ftpDownload: Can't connect to ftp $lista_dir[0]");
 				return;
 			}
 			if (!( $ftp->login('anonymous',$self->{MAIL_ANONYMOUS}))) {
-				$self->_debug("scarico_da_ftp: Non riesco login con ftp $lista_dir[0]");
+				$self->_debug("_ftpDownload: Can't login ftp $lista_dir[0]");
 				return;
 			} else {
-		  		$self->_debug("scarico_da_ftp: Collegato e loggato su ftp $lista_dir[0] per scaricare grib files");
+		  		$self->_debug("_ftpDownload: Connected and logged on ftp $lista_dir[0]. Downloading grib files...");
 			}
 			if (!($ftp->cwd("$new_dir"))) {
-				$self->_debug("scarico_da_ftp: Non riesco a cambiare dir in $lista_dir[0]");
+				$self->_debug("_ftpDownload: Can't change dir in $lista_dir[0]");
 				return;
 			} else {
-		  		$self->_debug("scarico_da_ftp: Cambiata directory in $new_dir");
+		  		$self->_debug("_ftpDownload:  Dir changed in $new_dir");
 			}
 			if (!($ftp->binary)) {
-				$self->_debug("scarico_da_ftp: Non riesco a cambiare in binary mode");
+				$self->_debug("_ftpDownload: Can't change to binary mode");
 				return;
 			} else {
-		  		$self->_debug("scarico_da_ftp: Switch to binary mode");
+		  		$self->_debug("_ftpDownload: Switch to binary mode");
 			}
 			if (!($ftp->get("$gfile"))) {
-				$self->_debug("scarico_da_ftp: Non riesco a scaricare grib file $gfile");
+				$self->_debug("_ftpDownload: Can't download grib file $gfile");
 				return;
 			}
 #######			$ftp = Net::FTP->new("$lista_dir[0]", timeout=>3600) || $self->_debug("Non riesco a collegarmi con ftp $lista_dir[0]");
@@ -391,7 +397,7 @@ sub scarica_da_ftp {
 #######			$ftp->binary;
 #######			$ftp->get("$gfile");
   		}	
-  		$self->_debug("scarico_da_ftp: $gfile downloaded");
+  		$self->_debug("_ftpDownload: $gfile downloaded");
   		my $rimanenti = $#lista_grib-$prog;
   		###print STDOUT "***\tRimangono da scaricare $rimanenti files\t***\n\n";
   		$prog++;
@@ -425,11 +431,11 @@ sub downloadGribFiles {
 	
 		if($self->check_string_on_url("transferred 60 out of 60 files",$STRINGA_URL)){	
 			 $ftp_trovato = $self->get_ftp_dir($CERCO_FTP,$STRINGA_URL);
-			 $self->_debug("ftp_trovato: ".$ftp_trovato);	
+			 $self->_debug("Ftp url from get_ftp_url: ".$ftp_trovato);	
 			if (length($ftp_trovato) > 0 ) {
-				$self->scarica_da_ftp($ftp_trovato);
+				$self->_ftpDownload($ftp_trovato);
 			} else {
-				$self->_debug("Errore nella ricerca del ftp per grib files");
+				$self->_debug("Ftp url from get_ftp_url is not an url.");
 			}	  
 		} else {
 			if ($self->check_string_on_url("Sorry, machine is overloaded",$STRINGA_URL)) {
@@ -439,7 +445,7 @@ sub downloadGribFiles {
 			} elsif ($self->check_string_on_url("too many ftp2u jobs now",$STRINGA_URL)) {
 				$self->_debug("Server $URL_NOMAD_1_SH too many ftp2u jobs now");
 			} else {
-				$self->_debug("Errore sconosciuto in fase di scarico grib files");
+				$self->_debug("Unknown error in download procedure.");
 			}
 			
 		}
@@ -547,7 +553,54 @@ sub idrisi2png {
 			
 		}
 		$self->_debug( "idrisi2png - key:$key - value:$value");
-		$self->idrisi2png_exe($key,$value);
+		if($key=~m/GRD/){
+			#faccio il match di solo una delle variabili vento per non duplicare l'ouput
+			if($key=~m/VGRD/){$self->idrisi_grd2png_exe($key,$value);}
+		} else {
+			$self->idrisi2png_exe($key,$value);
+		}
+		
+	}
+	return 1;
+}
+
+
+
+sub idrisiDownscale {
+
+	my $self = shift;
+	
+	if(!$self->checkSetup()){
+		return 0;
+	}
+	
+	my @idrisi_files = glob 'media_*.rst';
+	#$self->_debug( "idrisi2png");
+	foreach my $idrisi_file (@idrisi_files) {
+		#$self->_debug( "$idrisi_file");
+		my @elementi = split /_/,$idrisi_file;
+		my $key = undef;
+		my $value = undef;
+		for(my $i=0;$i<=$#elementi;$i++){
+			
+			if($i==1){
+				$key = $elementi[$i];
+			}
+			
+			if($i==2){
+				#my @elementi2 = split /./,$idrisi_file;
+				$value = $elementi[$i];
+				$value =~ s/[\.\,][a-z]+//;
+			}
+			
+		}
+		$self->_debug( "idrisiDownscale - key:$key - value:$value");
+		if($key=~m/GRD/){
+			#non serve fare il daownscale del vento
+			
+		} else {
+			$self->idrisiDownscale_exe($key,$value);
+		}
 		
 	}
 	return 1;
@@ -729,22 +782,22 @@ sub ascii2idrisi_avarage {
 					$tot_apcp1 = $tot;
 				}
 				if($i2>=8 && $i2 <=15) {
-					$tot_apcp2 = $tot;
+					$tot_apcp2 = $tot-$tot_apcp1;
 				}
 				if($i2>=16 && $i2 <=23) {
-					$tot_apcp3 = $tot;
+					$tot_apcp3 = $tot-$tot_apcp2;
 				}
 				if($i2>=24 && $i2 <=31) {
-					$tot_apcp4 = $tot;
+					$tot_apcp4 = $tot-$tot_apcp3;
 				}
 				if($i2>=32 && $i2 <=39) {
-					$tot_apcp5 = $tot;
+					$tot_apcp5 = $tot-$tot_apcp4;
 				}
 				if($i2>=40 && $i2 <=47) {
-					$tot_apcp6 = $tot;
+					$tot_apcp6 = $tot-$tot_apcp5;
 				}
 				if($i2>=48 && $i2 <=55) {
-					$tot_apcp7 = $tot;
+					$tot_apcp7 = $tot-$tot_apcp6;
 				}
 				$i3++;
 			}
@@ -881,6 +934,195 @@ sub ascii2idrisi_avarage {
 
 
 
+sub idrisiDownscale_exe {
+	my $self = shift;
+	my $key = shift;
+	my $value = shift;
+
+	my $nrig = $self->{D_LAT};
+	my $ncol = $self->{D_LON};
+	
+		
+	my $minlon= $self->{MINLON};
+	my $maxlat = $self->{MAXLAT};
+	my $minlat = $self->{MINLAT};
+	my $maxlon = $self->{MAXLON};
+	my $res = 1;
+
+	my $fileout = $key."_".$value;
+	
+	#APRO il file IDRISI e lo formatto il ASCII come vuole R
+#-------------------------------------------------------------------------------	  	
+
+
+
+#preso da grib2r.pl
+#-------------------------------------------------------------------------------	  	
+		#integrazione dello script GFS2R.pl; PREPARA IL FILE PER R
+  
+	my $file_in = "media_".$fileout."\.rst";
+	my $nome_file_rdc = "media_".$fileout."\.rdc";
+	
+	open(IN,"<$file_in") or die "non apre $file_in";
+	print "file in : ".$file_in."\n";
+	binmode(IN);
+	my $file_temp =$fileout."\_r.tmp";
+	open (OUT,">$file_temp") or die "non apre $file_temp";
+	
+	my $header="x\ty\tvariab";
+	print OUT "$header\n";
+	
+	my $val_lat=$maxlat;
+	my $kx=1;
+	my $leggi = undef;
+	my $valore = undef;
+	for(my $i=0;$i<$nrig;$i++) {   
+		my $val_lon = $minlon;
+		for(my $j=0;$j<$ncol;$j++) {
+			#my $leggi = <IN>;
+			read (IN,$valore,4);
+			$leggi=unpack('f2',$valore);
+			#chomp($leggi);
+			#print "leggi: $leggi\n";
+			print OUT "$kx\t$val_lon\t$val_lat\t$leggi\n";
+			$kx++;
+			$val_lon = $val_lon+$res;
+		}
+	$val_lat = $val_lat-$res;
+	}
+	close(IN);
+	close(OUT);
+#-------------------------------------------------------------------------------
+
+
+ #preso da scrivi_out.pl
+#-------------------------------------------------------------------------------
+	#creo la griglia di output a 0.1 degree
+	
+	open(FOUT,'>out_01degree.txt') or die "Non apre file out_01degree.txt!!";
+		#
+	##SCRIVE HEADER & INIZIALIZZA VARIABILI
+	print FOUT "\tx\ty\n";
+	$val_lat=$maxlat;
+	my $val_lon=$minlon-$res;
+	my $prog=1;
+	my $res10=0.1;
+	my $nrig10=$nrig*10;
+	my $ncol10 = $ncol*10;
+	#
+	##SCRIVE FILE OUT IN IDRISI MODE (DALL'ANGOLO IN ALTO A SINISTRA, QUINDI VERSO DESTRA E VERSO IL BASSO!)
+	for(my $i=0;$i<$nrig10;$i++) {   
+		for(my $j=0;$j<$ncol10;$j++) {
+			$val_lon=$val_lon+$res10;
+			print FOUT "$prog\t$val_lon\t$val_lat\n";
+			$prog++;
+		}
+		$val_lat=$val_lat-$res10;
+		$val_lon=$minlon-$res10;
+	}
+	#
+	##CHIUDE FILE OUT
+	close(FOUT);
+#-------------------------------------------------------------------------------	
+
+	
+  #preso da kriging.pl
+#-------------------------------------------------------------------------------		
+		
+		
+		#($filein, $variogramma, $distanza)=@ARGV;
+		
+	
+	my $file_r = $fileout."\.r";
+	# $datiin = "$filein"."\.txt";
+	my $datiin = $file_temp;
+	my $variogramma = "Exp";# valore standard del Kriging
+	my $distanza = "300";# valore standard del Kriging
+	my $curdir = cwd();
+
+		
+	#scrive script di R
+	open(FOUT,">$file_r") || die "Non apre file output R\n";
+	
+	print FOUT "\n";
+	print FOUT '#Carica le librerie necessarie'."\n";
+	print FOUT 'library(gstat, logical.return = T)'."\n\n";
+	print FOUT '#setta la directory di lavoro'."\n";
+	print FOUT "setwd(\'$curdir\')"."\n\n";
+	print FOUT '#lettura dati'."\n";
+	print FOUT "datiin <- read\.table(\"$datiin\")"."\n";
+	print FOUT "datiout <- read\.table(\"out_01degree\.txt\")"."\n\n";
+	print FOUT '#spazializza (kriging ordinario) rispetto alla colonna con nome variab'."\n";
+	print FOUT "mdlvgm <- vgm(10, \"$variogramma\", $distanza)"."\n";
+	print FOUT 'kriout <- krige(variab~1, ~x+y, data = datiin, newd = datiout, model = mdlvgm, nmax = 10, nmin = 5)'."\n\n";
+	print FOUT '#salva il contenuto della variabile predetta in un file txt (vettore colonna)'."\n";
+	#print FOUT "write\.table(kriout, file = \'$curdir/temp\.txt\', append = FALSE, quote = FALSE, sep = \"\\t\", "."\n";
+	print FOUT "write\.table(kriout, file = \'temp\.txt\', append = FALSE, quote = FALSE, sep = \"\\t\", "."\n";
+	print FOUT "\teol = \"\\n\", na = \'-999\', dec = \'\.\', row\.names = TRUE, col\.names = FALSE)"."\n\n";
+	print FOUT '#esce'."\n";
+	print FOUT 'quit(save="no")'."\n";
+	
+	close(FOUT);
+	
+	system($self->{R_PATH}." --no-save < $file_r");
+		#system('del out_01degree.txt');
+#-------------------------------------------------------------------------------	
+
+#trasformo il file temp.txt in IDRISI
+	open (IN, "<temp\.txt");
+	open (OUT, ">$file_in") or die "il file $file_in non si apre!!";
+	binmode(OUT);
+	while(<IN>){
+		my $rigo = $_;
+		chomp($rigo);
+		#print "rigo 1075: $rigo\n";
+		(my $a1,my $a2,my $a3,my $valore)=split(/\t/,$rigo);
+		$valore=sprintf("%5.1f",$valore);
+		#$valbin=pack('f',$valore);
+		my $valbin = pack ('f',$valore);
+		print OUT $valbin;		
+	}
+	close(IN);
+	close(OUT);
+	my $min_value = $self->rdcGetValue($nome_file_rdc,"min. value");
+	my $max_value = $self->rdcGetValue($nome_file_rdc,"max. value");
+
+	
+	open(SCRIVI_RDC,">$nome_file_rdc");
+	print SCRIVI_RDC "file format : IDRISI Raster A.1\n";
+	print SCRIVI_RDC "file title  : $file_in\n";
+	print SCRIVI_RDC "data type   : real\n";
+	print SCRIVI_RDC "file type   : binary\n";
+	print SCRIVI_RDC "columns     : $ncol10\n";
+	print SCRIVI_RDC "rows        : $nrig10\n";
+	print SCRIVI_RDC "ref. system : latlong\n";
+	print SCRIVI_RDC "ref. units  : deg\n";
+	print SCRIVI_RDC "unit dist.  : 1.0000000\n";
+	print SCRIVI_RDC "min. X      : $minlon\n";
+
+	print SCRIVI_RDC "max. X      : $maxlon\n";
+	print SCRIVI_RDC "min. Y      : $minlat\n";
+
+	print SCRIVI_RDC "max. Y      : $maxlat\n";
+	print SCRIVI_RDC "pos'n error : unknown\n";
+	print SCRIVI_RDC "resolution  : $res10\n";
+	print SCRIVI_RDC "min. value  : $min_value\n";
+	print SCRIVI_RDC "max. value  : $max_value\n";
+	print SCRIVI_RDC "display min : $min_value\n";
+	print SCRIVI_RDC "display max : $max_value\n";
+	print SCRIVI_RDC "value units : unknown\n";
+	print SCRIVI_RDC "value error : unknown\n";
+	print SCRIVI_RDC "flag value  : none\n";
+	print SCRIVI_RDC "flag def'n  : none\n";
+	print SCRIVI_RDC "legend cats : 0";
+	
+	#elimanates useless files
+	#system("rm temp.txt");
+	
+	#closes files
+	close(SCRIVI_RDC);
+	
+}
 
 
 sub idrisi2png_exe {
@@ -898,13 +1140,9 @@ sub idrisi2png_exe {
 # 	$minlon=-18;
 # 	$minlat = 3;
 # 	$res = 1;
-	my $nrig = $self->{D_LAT};
-	my $ncol = $self->{D_LON};
 	
-		
-	my $minlon= $self->{MINLON};
-	my $minlat = $self->{MINLAT};
-	my $res = 1;
+	
+
 
 	my $fileout = $key."_".$value;
 	
@@ -914,11 +1152,25 @@ sub idrisi2png_exe {
   my $fra7gg=(time+518400);
   my $data_fra7gg= $self->forecast_db_date($fra7gg);
   my $file_rst = "media_".$fileout."\.rst";
+  my $nome_file_rdc = "media_".$fileout."\.rdc";
   my $file_png = $fileout."_"."$data"."\.png";
   my $file_ctl = $fileout."_"."$data"."\.ctl";
   my $file_gs = $fileout."_"."$data"."\.gs";
   #$file_gra = $fileout."_"."$data"."_gra"."\.rst";
   my $file_gra = $file_rst;
+  
+  
+  	my $nrig = $self->rdcGetValue($nome_file_rdc,"rows");
+	my $ncol = $self->rdcGetValue($nome_file_rdc,"columns");
+# 	my $nrig = $self->{D_LAT};
+# 	my $ncol = $self->{D_LON};
+	
+		
+	my $minlon= $self->{MINLON};
+	my $minlat = $self->{MINLAT};
+	#my $res = 1;
+	my $res = $self->rdcGetValue($nome_file_rdc,"resolution");
+	
   
   #
   ##CREA CTL
@@ -938,11 +1190,16 @@ sub idrisi2png_exe {
   
   #
   ##CREA GS
-  open(OUT,">muletto\.gs") || die "Non apre file $file_gs\n";
+    
+     open(OUT,">muletto\.gs") || die "Non apre file $file_gs\n";
+    
+    
   print OUT "'open $file_ctl'\n";
   print OUT "'set mpdset hires'\n";
   if ($fileout=~m/PRES/) {
   	print OUT "'set gxout contour'\n";
+  } elsif ($fileout=~m/GRD/) {
+  	print OUT "'set gxout vector'\n";
   } else {
   	print OUT "'set gxout shaded'\n";
   }
@@ -1037,6 +1294,7 @@ sub idrisi2png_exe {
 
   print OUT "'display $fileout'\n";
   
+  #se non hanno inserito il parametro cbarn non stampo la palette
 if ($self->{CBARN_PATH}) {
 	print OUT "'run ".$self->{CBARN_PATH}."'\n"; 
 }
@@ -1055,10 +1313,12 @@ if ($self->{CBARN_PATH}) {
   	$subtitle='Level Surface -';
   }
   #################VALIDITA' PREVISIONE#################
-  my $previ = $fileout;
-  $previ =~s /APCP_//g;  
-  if ($fileout=~m/APCP_/) {
-  	$subtitle="$subtitle"." Forecast $data 00Z+ $previ";
+   
+  if ($fileout=~m/APCP[1-9]/) {
+	my $previ = $fileout;
+	$previ =~s /APCP([1-9])+_[a-z]+/$1/g; 
+	$previ--;
+  	$subtitle="$subtitle"." Forecast $data 00Z+ $previ dy";
   } else {
   	$subtitle="$subtitle"." Forecast $data 00Z valid until $data_fra7gg";
   }
@@ -1078,18 +1338,6 @@ if ($self->{CBARN_PATH}) {
   }
   #
   ##SCRITTE VARIE
-  print OUT "'set strsiz 0.15'\n";
-  if ($fileout=~m/APCP/) {
-  	print OUT "'draw string 5.5 1.5 Unit [mm]'\n";  	
-  } elsif ($fileout=~m/RH/) {
-	print OUT "'draw string 5.5 1.5 Unit [%]'\n";
-  } elsif ($fileout=~m/TMP/) {
-	print OUT "'draw string 5.5 1.5 Unit [C]'\n";
-  } elsif (($fileout=~m/UGRD/) || ($fileout=~m/VGRD/)) {
-	print OUT "'draw string 5.5 1.5 Unit [m/s]'\n";
-  } elsif ($fileout=~m/PRES/) {
-	print OUT "'draw string 5.5 1.5 Unit [mb]'\n";
-  }
   if (($fileout=~m/TMP/) || ($fileout=~m/VGRD/) || ($fileout=~m/UGRD/) || ($fileout=~m/RH/)) {
 	print OUT "'set gxout contour'\n";
 	print OUT "'display $fileout'\n";
@@ -1108,6 +1356,191 @@ if ($self->{CBARN_PATH}) {
   ## 
   system($self->{GRADSC_PATH}." -blc muletto\.gs");
  # print "idrisi2png conpleted\n";
+}
+
+
+sub idrisi_grd2png_exe {
+	my $self = shift;
+	my $key = shift;
+	my $value = shift;
+# 	my $key = @_[0];
+# 	my $value = @_[1];
+	
+	
+# 	  ($fileout, $nrig, $ncol, $minlon, $minlat, $res)=@ARGV;
+# 	($key, $value)=@ARGV; 
+# 	$nrig = 26;
+# 	$ncol = 68;
+# 	$minlon=-18;
+# 	$minlat = 3;
+# 	$res = 1;
+	my $nrig = $self->{D_LAT};
+	my $ncol = $self->{D_LON};
+	
+		
+	my $minlon= $self->{MINLON};
+	my $minlat = $self->{MINLAT};
+	my $res = 1;
+
+	#my $fileout = $key."_".$value;
+	my $fileout = "WIND_".$value;
+	
+	
+
+  my $data = $self->forecast_db_date(time);
+  my $fra7gg=(time+518400);
+  my $data_fra7gg= $self->forecast_db_date($fra7gg);
+#   my $file_rst = "media_".$fileout."\.rst";
+  my $file_png = $fileout."_"."$data"."\.png";
+#   my $file_ctl = $fileout."_"."$data"."\.ctl";
+  my $file_gs = $fileout."_"."$data"."\.gs";
+#   #$file_gra = $fileout."_"."$data"."_gra"."\.rst";
+#   my $file_gra = $file_rst;
+  
+    #NOMI FILE u
+  my $file_rst_u = "media_UGRD_".$value."\.rst";
+  my $file_ctl_u = $fileout."_u\.ctl";
+  my $file_gs_u = $fileout."_u\.gs";
+  my $file_gra_u = $file_rst_u;
+  
+  #NOMI FILE v
+  my $file_rst_v = "media_VGRD_".$value."\.rst";
+  my $file_ctl_v = $fileout."_v\.ctl";
+  my $file_gs_v = $fileout."_v\.gs";
+  my $file_gra_v = $file_rst_v;
+  
+  #
+  ##CREA CTL U
+  open(CTL,">$file_ctl_u") || die "Non apre file ctl ($file_ctl_u)\n";
+  print CTL "dset ^$file_gra_u"."\n";
+  print CTL "title \"titolo_mancante   Date:"."\n";
+  print CTL "OPTIONS yrev"."\n"; #rovescia le Y
+  print CTL "Undef -999"."\n"; 
+  print CTL "xdef $ncol linear $minlon $res"."\n";
+  print CTL "ydef $nrig linear $minlat $res"."\n";
+  print CTL "zdef 1 levels 500hpa"."\n";
+  print CTL "TDEF 1 LINEAR 00Z1aug1982 10dy"."\n";
+  print CTL "vars 1"."\n";
+  print CTL "$fileout\t0 99 Trend"."\n"; #qua va messo il nome della variabile da visualizzare
+  print CTL "endvars"."\n";
+  close(CTL); 
+  
+    ##CREA CTL V
+  open(CTL,">$file_ctl_v") || die "Non apre file ctl ($file_ctl_v)\n";
+  print CTL "dset ^$file_gra_v"."\n";
+  print CTL "title \"titolo_mancante   Date:"."\n";
+  print CTL "OPTIONS yrev"."\n"; #rovescia le Y
+  print CTL "Undef -999"."\n"; 
+  print CTL "xdef $ncol linear $minlon $res"."\n";
+  print CTL "ydef $nrig linear $minlat $res"."\n";
+  print CTL "zdef 1 levels 500hpa"."\n";
+  print CTL "TDEF 1 LINEAR 00Z1aug1982 10dy"."\n";
+  print CTL "vars 1"."\n";
+  print CTL "$fileout\t0 99 Trend"."\n"; #qua va messo il nome della variabile da visualizzare
+  print CTL "endvars"."\n";
+  close(CTL);  
+  
+  #
+  ##CREA GS
+    
+     open(OUT,">muletto\.gs") || die "Non apre file $file_gs\n";
+    
+    
+  print OUT "'open $file_ctl_u'\n";
+  print OUT "'open $file_ctl_v'\n";
+  print OUT "'set mpdset hires'\n";
+ 
+  print OUT "'set gxout vector'\n";
+ 
+  print OUT "'set grads off'\n";
+  print OUT "'set grid off'\n";
+ 
+  ##DISPLAY VARIABLE
+
+  print OUT "'display $fileout.1;$fileout.2'\n";
+
+
+	
+  ##TITLE
+  my $subtitle = undef;
+  
+  if ($fileout=~m/1000/) {
+  	$subtitle='Level 1000 mb -';
+  } elsif ($fileout=~m/925/) {
+  	$subtitle='Level 925 mb -';
+  } elsif ($fileout=~m/850/) {
+  	$subtitle='Level 850 mb -';
+  } else {
+  	$subtitle='Level Surface -';
+  }
+  #################VALIDITA' PREVISIONE#################
+   
+
+  	$subtitle="$subtitle"." Forecast $data 00Z valid until $data_fra7gg";
+  
+  #################VALIDITA' PREVISIONE#################  
+
+	print OUT "'draw title  WIND [m/s]\\$subtitle'\n";
+ 
+
+  ##SAVES PNG & QUIT
+#   print OUT "'printim $curdir\\$file_png x800 y600 white'\n";
+  print OUT "'printim $file_png x800 y600 white'\n";
+
+  
+  #print OUT "'clear'\n";
+  print OUT "'quit'\n";
+#   print OUT " return\n";
+  close(OUT);
+  
+  ## 
+  system($self->{GRADSC_PATH}." -blc muletto\.gs");
+ # print "idrisi2png conpleted\n";
+}
+
+sub cleanUp {
+	my $self = shift;
+	
+	my @parameters = {};
+	if ( ref( $_[0] ) eq "ARRAY" ) {
+		@parameters = @{ $_[0] };
+	} else {
+		@parameters = @_;
+	}
+
+	
+	foreach my $parameter (@parameters){
+		print "parameter: $parameter\n";
+		if($parameter eq 'temp'){
+			$self->_debug( "deleting: *.txt | *.r | *.tmp | *.ctl | muletto.gs\n");
+			unlink (<*.txt>) ;
+			unlink (<*.r>) ;
+			unlink (<*.tmp> );
+			unlink (<*.ctl>) ;
+			unlink (<muletto.gs>) ;
+			
+		}
+		if($parameter eq 'grib'){
+			$self->_debug( "deleting: gblav*\n");
+			unlink (<gblav.t*>) ;
+			
+		}
+		if($parameter eq 'png'){
+			$self->_debug( "deleting: *.png\n");
+			unlink (<*.png>) ;
+			
+		}
+		if($parameter eq 'idrisi'){
+			$self->_debug( "deleting: *.rdc | *.rst\n");
+			unlink (<*.rdc>) ;
+			unlink (<*.rst>) ;
+		}
+		 
+		
+	}
+	
+	
+	
 }
 
 #########################################################################
@@ -1200,6 +1633,37 @@ sub number_format_00 {
 
 
 
+sub rdcGetValue {
+	# $self->_rdcGetValue($rdc_file,$variable_name)
+	my $self = shift;
+	my $rdc_file = shift;
+	my $variable_name = shift;
+	
+	my $return = undef;
+	
+	open(RDC,"<$rdc_file");
+	while (<RDC>) {
+		chomp($_);
+		my $rigo = $_;
+		my @elementi = split / : /,$rigo;
+		my $var = $elementi[0];
+		my $var1 = $var;
+		my $var2 = $var;
+		$var1 =~ s/([a-zA-Z]+\s?[a-zA-Z]+)\s+/$1/g;
+		$var2 =~ s/(\S+\s*\S*)\s+/$1/g;
+# 		print "var1 : '$var1'='$variable_name'\n";
+# 		print "var2 : '$var2'='$variable_name'\n";
+# 		if (length($var1)>0){$var = $var1}
+# 		if (length($var2)>0){$var = $var2}
+# 		print "var2 : $var2\n";
+		if($variable_name eq $var1 || $variable_name eq $var2 || $variable_name eq $var){$return = $elementi[1];}
+	}
+	close(RDC);
+	return $return;
+}
+
+
+
 
 1;
 __END__
@@ -1261,6 +1725,14 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
 	die;
   }
 
+  #Downscale to 0.1 degrees the IDRISI files (needs R)
+  #Execution time has a sensible increase (x3 ca.)
+  if($weather_gfs->idrisiDownscale()){
+  	print "idrisiDownscale succeded!!!";
+  } else {
+  	print "idrisiDownscale had problems!!!";
+	die;
+  }
   
   #itransform Idrisi files to Png images (needs GrADS's gradsc)
   if($weather_gfs->idrisi2png()){
@@ -1270,10 +1742,20 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
 	die;
   }
 
+  #Delete files you don't need
+  my @typesToDelete = (
+	"grib",
+	"temp",
+ 	#"png",
+	"idrisi",
+	);
+
+$weather_gfs->cleanUp(@typesToDelete);
+
 =head1 DESCRIPTION
 
 
-This module produces forecast climate maps from NOAA GFS site (http://nomad2.ncep.noaa.gov/ncep_data/). It
+This module produces regional forecast climate maps from NOAA GFS site (http://nomad2.ncep.noaa.gov/ncep_data/). It
  downloads rough data, transforms it into IDRISI (binary GIS format) and then
      in PNG maps. Output maps are for temperature, relative humidity,
      zonal wind, pressure and rainfall precipitation. The module requires
@@ -1282,11 +1764,14 @@ This module produces forecast climate maps from NOAA GFS site (http://nomad2.nce
     (optional) (http://www.r-project.org/) to downscale the 1 degree
      resolution to 0.1 degree.
      
-
-=head1 TO DO
-
-1) integration with R
-2) better image output
+     IDRISI and PNG outputs for: 
+     daily rainfalls for seven days;
+     7 days rainfalls agregated;
+     pressure agregated average for 7 at surface level;
+     relative umidity agregated average for 7 days at 1000mb, 925mb, 850mb levels;
+     temperature agregated average for 7 days at 1000mb, 925mb, 850mb and surface levels;
+     wind agregated average for 7 days at  1000mb, 925mb, 850mb levels.
+    
 
 
 =head1 SEE ALSO
