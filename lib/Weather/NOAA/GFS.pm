@@ -14,7 +14,7 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.01";
+our $VERSION   = "0.02";
 
 
 my $LOGFILE = "forecast.log";
@@ -68,7 +68,9 @@ sub new {
 	$self->{MAXLAT}       = $parameters{maxlat}   if ( $parameters{maxlat} );
 	$self->{LOGFILE}       = $parameters{logfile}   if ( $parameters{logfile} );
 	$self->{TEMP_DIR}       = $parameters{temp_dir}   if ( $parameters{temp_dir} );
-	$self->{MAIL_ANONYMOUS}       = $parameters{mail_anonymous}   if ( $parameters{mail_anonymous} );	
+	$self->{MAIL_ANONYMOUS}       = $parameters{mail_anonymous}   if ( $parameters{mail_anonymous} );
+	$self->{CBARN_PATH}       = $parameters{cbarn_path}   if ( $parameters{cbarn_path} );	
+	$self->{R_PATH}       = $parameters{r_path}   if ( $parameters{r_path} );	
 
 
 
@@ -606,14 +608,18 @@ sub grib2ascii {
 }
 
 
+
+
 sub ascii2idrisi_avarage {
+
 	my $self = shift;
 	my $key = shift;
 	my $value = shift;
 # 	my $key = @_[0];
 # 	my $value = @_[1];
 	my $real_key = undef;
-	#print "init key: $key \n";
+
+	
 	if($key =~ /APCP/) {
 		$real_key = 'APCP';
 	} else {
@@ -632,11 +638,12 @@ sub ascii2idrisi_avarage {
 	my $index = 0;
 	my $index2 = 0;
 	my @values;
+	
 	#Praparo l'array dei files->valori
 	foreach my $sgribbed_file (@sgribbed_files) {
 		open (FIN,"<$sgribbed_file");
 		$index2=0;
-		#@values;
+		
 		while (<FIN>) {
 			$values[$index][$index2] = $_;
 			$index2++;
@@ -651,23 +658,23 @@ sub ascii2idrisi_avarage {
 	
 	#variabili coordinate
 	my $lon_i = 0;
-	my $col = 68;
-	my $rig = 26;
+	my $col = $self->{D_LON};
+	my $rig = $self->{D_LAT};
 
-	my $minlon= -18;
-	my $maxlon=49;
-	my $minlat=3;
-	my $maxlat = 28;
-	my $res = 1;
+	my $minlon= $self->{MINLON};
+	my $maxlon= $self->{MAXLON};
+	my $minlat= $self->{MINLAT};
+	my $maxlat = $self->{MAXLAT};
+	
+	my $res = $self->{RESOLUTION};
 	
 	my $lon = $minlon;
-	my $lat = $maxlat;
+	my  $lat = $maxlat;
 	my $min_value = 1000000;
 	my $max_value = -100000;
 
 	my $test_i = 0;
-	my $i1 = 0;
-	for ($i1=0;$i1<$index2;$i1++) { 
+	for (my $i1=0;$i1<$index2;$i1++) { 
 	##NOTA -> LORE -> per output binary non mettere lo header
 		if($i1==0) {
 			#stampo lo header per R solo al primo ciclo dove ho un grib file
@@ -687,10 +694,10 @@ sub ascii2idrisi_avarage {
 			my $tot_apcp7 = 0;
 			
 			for (my $i2=0;$i2<$index;$i2++) {
-				my $value = $values[$i2][$i1];
+				my $value_line = $values[$i2][$i1];
 				#$value=sprintf("%5.1f",$value);
 				
-				$tot = $tot + $value;
+				$tot = $tot + $value_line;
 				if($i2>=0 && $i2 <=7) {
 					$tot_apcp1 = $tot;
 				}
@@ -774,7 +781,7 @@ sub ascii2idrisi_avarage {
 			
 			#creo le coordinate punto punto
 			# 			
-			if($lon==$maxlon && $index2>1) {
+			if ($lon==$maxlon && $index2>1) {
 				$lon = $minlon;
 				$lat = $lat-$res; 
 			} else {
@@ -785,10 +792,10 @@ sub ascii2idrisi_avarage {
 			
 			#Massimo e minimo
 			#print "$tot\n";
-			if($min_value>$tot) {
+			if ($min_value>$tot) {
 				$min_value=$tot;
 			}
-			if($max_value<$tot) {
+			if ($max_value<$tot) {
 				$max_value=$tot;
 			}
 			
@@ -800,8 +807,8 @@ sub ascii2idrisi_avarage {
 
 	chomp($min_value);
 	chomp($max_value);
-	#print "i2: $i2\n";
-	print "min val ($min_value):: max val ($max_value)\n";
+
+	$self->_debug( "min val ($min_value):: max val ($max_value)");
 	#print "test_i ($test_i):: index2 ($index2)\n";
 
 	close(FOUT);#chiudo il file di aggregazione dati
@@ -845,292 +852,6 @@ sub ascii2idrisi_avarage {
 
 }
 
-
-
-# 
-# 
-# sub ascii2idrisi_avarage {
-# 	my $self = shift;
-# 	my $key = shift;
-# 	my $value = shift;
-# # 	my $key = @_[0];
-# # 	my $value = @_[1];
-# 	my $real_key = undef;
-# 	
-# 	if($key =~ /APCP/) {
-# 		$real_key = 'APCP';
-# 	} else {
-# 		$real_key = $key;
-# 	}
-# 	my $glob_match = 'gblav_t*z_pgrbf*_'.$real_key.'-'.$value.'.txt';
-# 	$self->_debug( $glob_match);
-# 	my @sgribbed_files = glob $glob_match;
-# 
-# 		
-# 	# apro il file di output finale -> aggregazione dati
-# 	my $nome_file_out = "media_".$key."_".$value."\.rst";#binario
-# 	my $nome_file_rdc = "media_".$key."_".$value."\.rdc";#ascii infos (raster documentation file)
-# 	
-# 
-# 	my $index = 0;
-# 	my $index2=0;
-# 	my @array_valori= () ; #struttura su cui creo l'albero dei file->colonna_valore
-# 	#my $value = undef;
-# 	#$self->_debug( Dumper(@values) );
-# 	#Praparo l'array dei files->valori
-# 	my $sgribbed_file = undef;
-# # 	foreach  $sgribbed_file (@sgribbed_files) {
-# # 		open (FIN,"<$sgribbed_file");
-# # 		while (<FIN>) {
-# # 			#chomp;
-# # 			my $valore = $_;
-# # 			$valore =~ s/\n//;
-# # 			#my @values[$index];
-# # 			$array_valori[$index][$index2] = $valore;
-# # 			#$self->_debug( $array_valori[$index][$index2]  );
-# # 			$index2++;
-# # 		}
-# # 		close(FIN);
-# # 		
-# # 		$index++;
-# # 	}
-# 	foreach  $sgribbed_file (@sgribbed_files) {
-# 		$index2=0;
-# 		open (FIN,"<$sgribbed_file");
-# 		my @array_righe= () ;
-# 		while (<FIN>) {
-# 			chomp;
-# 			my $valore = $_;
-# 			#$valore =~ s/\n//;
-# 			#my @values[$index];
-# 			$array_righe[$index2] = $valore;
-# 			#$self->_debug( $array_valori[$index][$index2]  );
-# 			$index2++;
-# 		}
-# 		close(FIN);
-# 		$array_valori[$index] =  [ @array_righe ];
-# 		#undef @array_righe;
-# 		#$self->_debug( "tot righe($key, $value):".$#array_righe);
-# 		#$self->_debug( "tot valori($sgribbed_file)(index2:$index2 - index:$index):" .$#array_valori);
-# 		#$self->_debug( Dumper($array_valori[$index]));
-# 		$index++;
-# 	}
-# 	#$self->_debug( Dumper($array_valori[30]));
-# 	
-# 	#$self->_debug( "array valori:");
-# 	#$self->_debug( values );
-# # 	$self->_debug( Dumper(@values) );
-# # 	die;
-# 	open(FOUT,">".$nome_file_out) || "Non apre file out\n";
-# 	binmode(FOUT);
-# 	
-# 	
-# 	#variabili coordinate
-# 	my $lon_i = 0;
-# 	
-# 	my $res = $self->{RESOLUTION};
-# 	
-# 	my $rig = $self->{D_LAT};
-# 	my $col = $self->{D_LON};
-# 	my $minlon= $self->{MINLON};
-# 	my $minlat = $self->{MINLAT};
-# 	my $maxlat = $self->{MAXLAT};
-# 	my $maxlon = $self->{MAXLON};
-# 	
-# 	my $lon = $minlon;
-# 	my $lat = $maxlat;
-# 	my $min_value = 1000000;
-# 	my $max_value = -100000;
-# 
-# 	my $test_i = 0;
-# 	my $i1 =0;
-# 	my $i2 =0;
-# 	my $i3 = 0;
-# 	my $tot = 0;
-# 	#my $value = 0;
-# 	#$self->_debug("index: $index");
-# 	for ($i1=0;$i1<$index2;$i1++) { 
-# 	#$self->_debug("index: $index - i1: $i1 - tot $#array_valori");
-# 	##NOTA -> LORE -> per output binary non mettere lo header
-# 		if($i1==0) {
-# 			#stampo lo header per R solo al primo ciclo dove ho un grib file
-# # 			my $header="x\ty\tvariab";
-# # 			print FOUT "$header\n";
-# # 			next;
-# 			
-# 		} else {
-# 			
-# 			my $tot_apcp1 = 0;
-# 			my $tot_apcp2 = 0;
-# 			my $tot_apcp3 = 0;
-# 			my $tot_apcp4 = 0;
-# 			my $tot_apcp5 = 0;
-# 			my $tot_apcp6 = 0;
-# 			my $tot_apcp7 = 0;
-# 			
-# 			for ($i2=0;$i2<$index;$i2++) {
-# 			
-# 				#my $actual_value = $array_valori[$i2][$i1];
-# 				my $actual_value = $array_valori[$i2][$i1];
-# 				#$self->_debug("value: $value");
-# 				#$value=sprintf("%5.1f",$value);
-# 				$tot = $tot + $actual_value;
-# 				#$self->_debug("actual_value: $actual_value");
-# 				#$self->_debug("tot: $tot");
-# 				if($i2>=0 && $i2 <=7) {
-# 					$tot_apcp1 = $tot;
-# 				}
-# 				if($i2>=8 && $i2 <=15) {
-# 					$tot_apcp2 = $tot;
-# 				}
-# 				if($i2>=16 && $i2 <=23) {
-# 					$tot_apcp3 = $tot;
-# 				}
-# 				if($i2>=24 && $i2 <=31) {
-# 					$tot_apcp4 = $tot;
-# 				}
-# 				if($i2>=32 && $i2 <=39) {
-# 					$tot_apcp5 = $tot;
-# 				}
-# 				if($i2>=40 && $i2 <=47) {
-# 					$tot_apcp6 = $tot;
-# 				}
-# 				if($i2>=48 && $i2 <=55) {
-# 					$tot_apcp7 = $tot;
-# 				}
-# 				$i3++;
-# 			}
-# 			#print "key aggragated: $key";
-# 			if ($key  eq 'APCP') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot;
-# # 				print $tot." ";
-# 			}
-# 			if ($key  eq 'APCP1') {
-# 				#somma della pioggia del prima giorno
-# 				$tot = $tot_apcp1;
-# 				#print $tot." ";
-# 			}
-# 			if ($key  eq 'APCP2') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot_apcp2;
-# 				
-# 			}
-# 			if ($key  eq 'APCP3') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot_apcp3;
-# 				
-# 			}
-# 			if ($key  eq 'APCP4') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot_apcp4;
-# 				
-# 			}
-# 			if ($key  eq 'APCP5') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot_apcp5;
-# 				
-# 			}
-# 			if ($key  eq 'APCP6') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot_apcp6;
-# 				
-# 			}
-# 			if ($key  eq 'APCP7') {
-# 				#sommo tutto e non non divido
-# 				$tot = $tot_apcp7;
-# 				
-# 			}
-# 			if ($key eq 'PRES') {
-# 				#sommo tutto, fo la media e divido per 100 (hpascal)
-# 				$tot = $tot/$i3/100;
-# 			}
-# 			if ($key eq 'TMP') {
-# 				#sommo tutto, fo la media e sommo 273
-# 				$tot = $tot/$i3-273;
-# 			}
-# 			if ($key eq 'VGRD' || $key eq 'UGRD' || $key eq 'RH') {
-# 				#sommo tutto e la media
-# 				$tot = $tot/$i3;
-# 			}
-# 			$test_i++;
-# 			#print FOUT "$test_i\t$lon\t$lat\t$tot\n";
-# 			my $valbin = pack ('f',$tot);
-# 			print FOUT $valbin;
-# 			
-# 			#creo le coordinate punto punto
-# 			# 			
-# 			if($lon==$maxlon && $index2>1) {
-# 				$lon = $minlon;
-# 				$lat = $lat-$res; 
-# 			} else {
-# 			#print "lon1: $lon1\n";
-# 				$lon++;
-# 				$lon_i++;
-# 			}
-# 			
-# 			#Massimo e minimo
-# 			#print "$tot\n";
-# 			if($min_value>$tot) {
-# 				$min_value=$tot;
-# 			}
-# 			if($max_value<$tot) {
-# 				$max_value=$tot;
-# 			}
-# 			
-# 			#print "lon1: $lon_i \tlon: $lon \t lat: $lat\n";
-# 		}
-# 
-# 
-# 	}
-# 
-# 	chomp($min_value);
-# 	chomp($max_value);
-# 	#print "i2: $i2\n";
-# 	$self->_debug( "min val ($min_value):: max val ($max_value)\n");
-# 	#print "test_i ($test_i):: index2 ($index2)\n";
-# 
-# 	close(FOUT);#chiudo il file di aggregazione dati
-# 	
-# 	
-# 	
-# 	##NOTA -> LORE -> per output binary
-# 	open(SCRIVI_RDC,">$nome_file_rdc");
-# 	print SCRIVI_RDC "file format : IDRISI Raster A.1\n";
-# 	print SCRIVI_RDC "file title  : $nome_file_out\n";
-# 	print SCRIVI_RDC "data type   : real\n";
-# 	print SCRIVI_RDC "file type   : binary\n";
-# 	print SCRIVI_RDC "columns     : $col\n";
-# 	print SCRIVI_RDC "rows        : $rig\n";
-# 	print SCRIVI_RDC "ref. system : latlong\n";
-# 	print SCRIVI_RDC "ref. units  : deg\n";
-# 	print SCRIVI_RDC "unit dist.  : 1.0000000\n";
-# 	print SCRIVI_RDC "min. X      : $minlon\n";
-# 	#$maxlon=($ncol*$res)+$minlon;
-# 	print SCRIVI_RDC "max. X      : $maxlon\n";
-# 	print SCRIVI_RDC "min. Y      : $minlat\n";
-# 	#$maxlat=($nrig*$res)+$minlat;
-# 	print SCRIVI_RDC "max. Y      : $maxlat\n";
-# 	print SCRIVI_RDC "pos'n error : unknown\n";
-# 	print SCRIVI_RDC "resolution  : $res\n";
-# 	print SCRIVI_RDC "min. value  : $min_value\n";
-# 	print SCRIVI_RDC "max. value  : $max_value\n";
-# 	print SCRIVI_RDC "display min : $min_value\n";
-# 	print SCRIVI_RDC "display max : $max_value\n";
-# 	print SCRIVI_RDC "value units : unknown\n";
-# 	print SCRIVI_RDC "value error : unknown\n";
-# 	print SCRIVI_RDC "flag value  : none\n";
-# 	print SCRIVI_RDC "flag def'n  : none\n";
-# 	print SCRIVI_RDC "legend cats : 0";
-# 	
-# 	#elimanates useless files
-# 	#system("rm temp.txt");
-# 	
-# 	#closes files
-# 	close(SCRIVI_RDC);
-# 
-# }
-# 
 
 
 
@@ -1288,11 +1009,15 @@ sub idrisi2png_exe {
   ##DISPLAY VARIABLE
 
   print OUT "'display $fileout'\n";
-print OUT "'run cbarn.gs'\n"; 
+  
+if ($self->{CBARN_PATH}) {
+	print OUT "'run ".$self->{CBARN_PATH}."'\n"; 
+}
 
 	
   ##TITLE
   my $subtitle = undef;
+  
   if ($fileout=~m/1000/) {
   	$subtitle='Level 1000 mb -';
   } elsif ($fileout=~m/925/) {
@@ -1411,6 +1136,7 @@ sub data_formattata_forecast {
         
         return "$mday/$mon/$year - $hour:$min:$sec";
 }
+
 	
 sub forecast_db_date {
         #questa subroutine si aspetta la funzione "time"
@@ -1426,8 +1152,9 @@ sub forecast_db_date {
         $mon = $self->number_format_00($mon+1);
         $year = $self->number_format_00($year);
         
-        return $mday.$mon.$year;
+        return "$mday$mon$year";
 }
+
 
 sub number_format_00 {
 	my $self = shift;
@@ -1453,7 +1180,7 @@ __END__
 
 =head1 NAME
 
-Weather::NOAA::GFS - Perl extension for blah blah blah
+Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
 
 =head1 SYNOPSIS
 
@@ -1469,6 +1196,8 @@ Weather::NOAA::GFS - Perl extension for blah blah blah
 		'mail_anonymous'    => 'my@mail.com',# mandatory to log NOAA ftp server
 		'debug'    => 1 # 0 no output - 1 output
 		'logfile'    => 'weather-noaa-gfs.log',# optional
+		'cbarn_path' => 'cbarn.gs', #optional, needed to print image legend
+		'r_path' => 'R',# optional, needed to downscale
   );
   
   
