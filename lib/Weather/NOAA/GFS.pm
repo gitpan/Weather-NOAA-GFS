@@ -1,6 +1,6 @@
 package Weather::NOAA::GFS;
 
-use 5.006;
+#use 5.006;
 use strict;
 use warnings;
 
@@ -14,7 +14,10 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.02";
+our $VERSION   = "0.03";
+
+# VERSION 0.03
+#	- no Perl Version check
 
 
 my $LOGFILE = "forecast.log";
@@ -1243,7 +1246,7 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
 =head1 DESCRIPTION
 
 
-This module that produces forecast climate maps from NOAA GFS site (http://nomad2.ncep.noaa.gov/ncep_data/). It
+This module produces forecast climate maps from NOAA GFS site (http://nomad2.ncep.noaa.gov/ncep_data/). It
  downloads rough data, transforms it into IDRISI (binary GIS format) and then
      in PNG maps. Output maps are for temperature, relative humidity,
      zonal wind, pressure and rainfall precipitation. The module requires
@@ -1252,13 +1255,14 @@ This module that produces forecast climate maps from NOAA GFS site (http://nomad
     (optional) (http://www.r-project.org/) to downscale the 1 degree
      resolution to 0.1 degree.
      
-=head2 EXPORT
 
-
+=head1 TO DO
+1) integration with R
+2) better image output
 
 
 =head1 SEE ALSO
-Software needed:
+=head2Software needed:
 
 GrADS - http://grads.iges.org/grads/grads.html
 used: wgrib, gradsc. Need cbarn.gs

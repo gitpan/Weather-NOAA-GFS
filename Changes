@@ -3,4 +3,11 @@ Revision history for Perl extension Weather::NOAA::GFS.
 0.01  Thu Dec  9 12:25:21 2004
 	- original version; created by h2xs 1.23 with options
 		-X -n Weather::NOAA::GFS
+		
+0.02  Thu Dec  9 12:25:21 2004
+	- 
+		
+		
+0.03  Thu Dec  9 12:25:21 2004
+	- remove perl version check
 
