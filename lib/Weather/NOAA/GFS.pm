@@ -15,13 +15,12 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.05";
+our $VERSION   = "0.06";
 
 ## VERSIONS INFOS
-# 0.04  Dec 14 2004
-# 	- added gradsc_path parameter
-# 	- added wgrib_path parameter
-# 	- documentation corrections
+# 0.06  May 11 2005
+# 	- correction on download string to adapt to nomad's page name change
+# 	- correction on 'glab.t*z.pgrbf*' to 'gfs.t*z.pgrb*' 
 # 
 # 0.05  Jan 04 2005
 # 	- added downscale function (idrisiDownscale)
@@ -29,12 +28,16 @@ our $VERSION   = "0.05";
 # 	- corrections on rain png infos
 # 	- corrections on rain dayly rains calculation bug
 # 	- cleanUp function added
-
+# 0.04  Dec 14 2004
+# 	- added gradsc_path parameter
+# 	- added wgrib_path parameter
+# 	- documentation corrections
+# 
 
 
 my $LOGFILE = "forecast.log";
-my $URL_NOMAD_1_SH = "http://nomad2.ncep.noaa.gov/cgi-bin/ftp2u_avn.sh";
-my $CERCO_FTP = 'ftp://nomad2.ncep.noaa.gov/pub/NOMAD_3hr/';
+my $URL_NOMAD_1_SH = "http://nomad5.ncep.noaa.gov/cgi-bin/ftp2u_gfs.sh";
+my $CERCO_FTP = 'ftp://nomad5.ncep.noaa.gov/pub/NOMAD_1hr/';
 
 #------------------------------------------------------------------------
 # Constructor
@@ -44,12 +47,13 @@ sub new {
 	my $class = ref($proto) || $proto;
 	my $self  = {};
 
-	# some general attributes
+# 	some general attributes
 	$self->{PROXY}   = "none";
 	$self->{TIMEOUT} = 180;
 	$self->{DEBUG}   = 0;
  	$self->{LOGFILE}   = undef;
-	$self->{TEMP_DIR}  = undef;
+	$self->{TEMP_DIR}  = "./";#working dir
+	$self->{DEST_DIR}  = "./";#png images destination dir
 	$self->{MAIL_ANONYMOUS} = undef;#obbligatorio
 
 	# quadro
@@ -73,6 +77,7 @@ sub new {
 		%parameters = @_;
 	}
 
+	
 	# set attributes as in %parameters
 	$self->{PROXY}       = $parameters{proxy}   if ( $parameters{proxy} );
 	$self->{TIMEOUT}     = $parameters{timeout} if ( $parameters{timeout} );
@@ -83,6 +88,7 @@ sub new {
 	$self->{MAXLAT}       = $parameters{maxlat}   if ( $parameters{maxlat} );
 	$self->{LOGFILE}       = $parameters{logfile}   if ( $parameters{logfile} );
 	$self->{TEMP_DIR}       = $parameters{temp_dir}   if ( $parameters{temp_dir} );
+	$self->{DEST_DIR}       = $parameters{dest_dir}   if ( $parameters{dest_dir} );	
 	$self->{MAIL_ANONYMOUS}       = $parameters{mail_anonymous}   if ( $parameters{mail_anonymous} );
 	$self->{CBARN_PATH}       = $parameters{cbarn_path}   if ( $parameters{cbarn_path} );	
 	$self->{R_PATH}       = $parameters{r_path}   if ( $parameters{r_path} );
@@ -100,13 +106,13 @@ sub new {
 		exit
 	}
 	if($self->{GRADSC_PATH}){
-		$self->_debug( "mail Ok!");
+		$self->_debug( "gradsc_path Ok!");
 	} else {
 		$self->_debug( "'gradsc_path' is a mandatory parameter!");
 		exit
 	}
 	if($self->{WGRIB_PATH}){
-		$self->_debug( "mail Ok!");
+		$self->_debug( "wgrib_path Ok!");
 	} else {
 		$self->_debug( "'wgrib_path' is a mandatory parameter!");
 		exit
@@ -282,8 +288,8 @@ sub get_ftp_dir {
 	$LX->parse(\$html);
 
 	foreach my $Link (@{$LX->links} ){
-	## becco solo l'ftp che presenta la sola directory (ovvero non contiene il file "gblav*")
-		if( ($$Link{href}=~ /^ftp:\/\//) && ($$Link{href}!~ /gblav/) ) {	
+	## becco solo l'ftp che presenta la sola directory (ovvero non contiene il file "gfs*")
+		if( ($$Link{href}=~ /^ftp:\/\//) && ($$Link{href}!~ /gfs/) ) {	
 			$ftp_founded = $$Link{_TEXT};		
 			$ftp_founded =~ s/<([a-z][a-z0-9]*)[^>]*>(.*?)<\/a>/$2/;
 		}
@@ -354,18 +360,19 @@ sub _ftpDownload {
 	} else {
   		$self->_debug("_ftpDownload: Switch to binary mode");
 	}
-	if (!( @lista_grib= $ftp->ls("gblav*pgrbf*"))) {
+	if (!( @lista_grib= $ftp->ls("gfs*pgrbf*"))) {
 		$self->_debug("_ftpDownload: Can't retrieve grib files array");
 	} else {
   		$self->_debug("_ftpDownload: Retrieve grib files array");
 	}
 #######	$ftp->binary;	
-#######	@lista_grib=$ftp->ls("gblav*pgrbf*");
+#######	@lista_grib=$ftp->ls("gfs*pgrbf*");
   	my $tot_gfiles=  $#lista_grib+1;
 	my $prog=0;
   	foreach my $gfile (@lista_grib) {
-  		while (!($ftp->get("$gfile"))) {
-  			if (!($ftp = Net::FTP->new("$lista_dir[0]", timeout=>3600))) {
+  		#prova cambio directory
+		while (!($ftp->get("$gfile","$self->{TEMP_DIR}$gfile"))) {
+  				if (!($ftp = Net::FTP->new("$lista_dir[0]", timeout=>3600))) {
 				$self->_debug("_ftpDownload: Can't connect to ftp $lista_dir[0]");
 				return;
 			}
@@ -387,7 +394,7 @@ sub _ftpDownload {
 			} else {
 		  		$self->_debug("_ftpDownload: Switch to binary mode");
 			}
-			if (!($ftp->get("$gfile"))) {
+			if (!($ftp->get("$gfile","$self->{TEMP_DIR}$gfile"))) {
 				$self->_debug("_ftpDownload: Can't download grib file $gfile");
 				return;
 			}
@@ -405,6 +412,7 @@ sub _ftpDownload {
 	#
 	##QUIT
 	$ftp->quit;		
+
 }
 
 
@@ -415,15 +423,15 @@ sub downloadGribFiles {
 		$self->_debug( "downloadGribFiles: Setup is not proper. Control input data and try again.");
 		return 0;
 	}
-	my @gribs = glob 'gblav.t*z.pgrbf*'; #elenca tutti i grib files presenti nella cartella corrente
+	my @gribs = glob 'gfs.t*z.pgrbf*'; #elenca tutti i grib files presenti nella cartella corrente
 
 	## VARS
 	my $ftp_trovato = undef;
 	
 
-	my $STRINGA_URL = "http://nomad2.ncep.noaa.gov/cgi-bin/ftp2u_avn.sh?file=gblav\.t00z\.pgrbf03&file=gblav\.t00z\.pgrbf06&file=gblav\.t00z\.pgrbf09&file=gblav\.t00z\.pgrbf12&file=gblav\.t00z\.pgrbf15&file=gblav\.t00z\.pgrbf18&file=gblav\.t00z\.pgrbf21&file=gblav\.t00z\.pgrbf24&file=gblav\.t00z\.pgrbf27&file=gblav\.t00z\.pgrbf30&file=gblav\.t00z\.pgrbf33&file=gblav\.t00z\.pgrbf36&file=gblav\.t00z\.pgrbf39&file=gblav\.t00z\.pgrbf42&file=gblav\.t00z\.pgrbf45&file=gblav\.t00z\.pgrbf48&file=gblav\.t00z\.pgrbf51&file=gblav\.t00z\.pgrbf54&file=gblav\.t00z\.pgrbf57&file=gblav\.t00z\.pgrbf60&file=gblav\.t00z\.pgrbf63&file=gblav\.t00z\.pgrbf66&file=gblav\.t00z\.pgrbf69&file=gblav\.t00z\.pgrbf72&file=gblav\.t00z\.pgrbf75&file=gblav\.t00z\.pgrbf78&file=gblav\.t00z\.pgrbf81&file=gblav\.t00z\.pgrbf84&file=gblav\.t00z\.pgrbf87&file=gblav\.t00z\.pgrbf90&file=gblav\.t00z\.pgrbf93&file=gblav\.t00z\.pgrbf96&file=gblav\.t00z\.pgrbf99&file=gblav\.t00z\.pgrbf102&file=gblav\.t00z\.pgrbf105&file=gblav\.t00z\.pgrbf108&file=gblav\.t00z\.pgrbf111&file=gblav\.t00z\.pgrbf114&file=gblav\.t00z\.pgrbf117&file=gblav\.t00z\.pgrbf120&file=gblav\.t00z\.pgrbf123&file=gblav\.t00z\.pgrbf126&file=gblav\.t00z\.pgrbf129&file=gblav\.t00z\.pgrbf132&file=gblav\.t00z\.pgrbf135&file=gblav\.t00z\.pgrbf138&file=gblav\.t00z\.pgrbf141&file=gblav\.t00z\.pgrbf144&file=gblav\.t00z\.pgrbf147&file=gblav\.t00z\.pgrbf150&file=gblav\.t00z\.pgrbf153&file=gblav\.t00z\.pgrbf156&file=gblav\.t00z\.pgrbf159&file=gblav\.t00z\.pgrbf162&file=gblav\.t00z\.pgrbf165&file=gblav\.t00z\.pgrbf168&file=gblav\.t00z\.pgrbf171&file=gblav\.t00z\.pgrbf174&file=gblav\.t00z\.pgrbf177&file=gblav\.t00z\.pgrbf180&wildcard=&lev_sfc=on&lev_1000_mb=on&lev_925_mb=on&lev_850_mb=on&var_APCP=on&var_PRES=on&var_RH=on&var_UGRD=on&var_VGRD=on&var_TMP=on&subregion=on&leftlon=$self->{MINLON}&rightlon=$self->{MAXLON}&toplat=$self->{MAXLAT}&bottomlat=$self->{MINLAT}&results=SAVE&rtime=3hr&machine=149.139.16.204&user=anonymous&passwd=&ftpdir=%2Fincoming_1hr&prefix=&dir=";
+	my $STRINGA_URL = "$URL_NOMAD_1_SH?file=gfs\.t00z\.pgrbf03&file=gfs\.t00z\.pgrbf06&file=gfs\.t00z\.pgrbf09&file=gfs\.t00z\.pgrbf12&file=gfs\.t00z\.pgrbf15&file=gfs\.t00z\.pgrbf18&file=gfs\.t00z\.pgrbf21&file=gfs\.t00z\.pgrbf24&file=gfs\.t00z\.pgrbf27&file=gfs\.t00z\.pgrbf30&file=gfs\.t00z\.pgrbf33&file=gfs\.t00z\.pgrbf36&file=gfs\.t00z\.pgrbf39&file=gfs\.t00z\.pgrbf42&file=gfs\.t00z\.pgrbf45&file=gfs\.t00z\.pgrbf48&file=gfs\.t00z\.pgrbf51&file=gfs\.t00z\.pgrbf54&file=gfs\.t00z\.pgrbf57&file=gfs\.t00z\.pgrbf60&file=gfs\.t00z\.pgrbf63&file=gfs\.t00z\.pgrbf66&file=gfs\.t00z\.pgrbf69&file=gfs\.t00z\.pgrbf72&file=gfs\.t00z\.pgrbf75&file=gfs\.t00z\.pgrbf78&file=gfs\.t00z\.pgrbf81&file=gfs\.t00z\.pgrbf84&file=gfs\.t00z\.pgrbf87&file=gfs\.t00z\.pgrbf90&file=gfs\.t00z\.pgrbf93&file=gfs\.t00z\.pgrbf96&file=gfs\.t00z\.pgrbf99&file=gfs\.t00z\.pgrbf102&file=gfs\.t00z\.pgrbf105&file=gfs\.t00z\.pgrbf108&file=gfs\.t00z\.pgrbf111&file=gfs\.t00z\.pgrbf114&file=gfs\.t00z\.pgrbf117&file=gfs\.t00z\.pgrbf120&file=gfs\.t00z\.pgrbf123&file=gfs\.t00z\.pgrbf126&file=gfs\.t00z\.pgrbf129&file=gfs\.t00z\.pgrbf132&file=gfs\.t00z\.pgrbf135&file=gfs\.t00z\.pgrbf138&file=gfs\.t00z\.pgrbf141&file=gfs\.t00z\.pgrbf144&file=gfs\.t00z\.pgrbf147&file=gfs\.t00z\.pgrbf150&file=gfs\.t00z\.pgrbf153&file=gfs\.t00z\.pgrbf156&file=gfs\.t00z\.pgrbf159&file=gfs\.t00z\.pgrbf162&file=gfs\.t00z\.pgrbf165&file=gfs\.t00z\.pgrbf168&file=gfs\.t00z\.pgrbf171&file=gfs\.t00z\.pgrbf174&file=gfs\.t00z\.pgrbf177&file=gfs\.t00z\.pgrbf180&wildcard=&lev_sfc=on&lev_1000_mb=on&lev_925_mb=on&lev_850_mb=on&var_APCP=on&var_PRES=on&var_RH=on&var_UGRD=on&var_VGRD=on&var_TMP=on&subregion=on&leftlon=$self->{MINLON}&rightlon=$self->{MAXLON}&toplat=$self->{MAXLAT}&bottomlat=$self->{MINLAT}&results=SAVE&rtime=3hr&machine=149.139.16.204&user=anonymous&passwd=&ftpdir=%2Fincoming_1hr&prefix=&dir=";
 	
-	#$self->_debug("Stringa Url: ".$STRINGA_URL);
+	$self->_debug("Stringa Url: ".$STRINGA_URL);
 	
 	while ($#gribs<59) {
  		my $tot_gribs=$#gribs+1;
@@ -450,7 +458,7 @@ sub downloadGribFiles {
 			
 		}
 	
-  @gribs = glob 'gblav.t*z.pgrbf*';
+  @gribs = glob 'gfs.t*z.pgrbf*';
   $tot_gribs=$#gribs+1;
   $self->_debug( "GRIB files in dir: $tot_gribs:60");
   ## LORE -> note -> Ci vuole un delay parametrizzato per non stressare il server
@@ -461,7 +469,7 @@ sub downloadGribFiles {
   			# dobbiamo abbozzarla di tentare lo scarico.
  
  if($#gribs==59){
- 	$self->{GRIB_FILES} = 'gblav.t*z.pgrbf*';
+ 	$self->{GRIB_FILES} = 'gfs.t*z.pgrbf*';
 	return 1;
  } else {
  	return 0;
@@ -479,8 +487,8 @@ sub ascii2idrisi {
 	}
 	
 	my %chiaveValore= ();
-	#$self->{GRIB_FILES} = 'gblav.t*z.pgrbf*';
-		my @grib_files = glob 'gblav.t*z.pgrbf*';
+	#$self->{GRIB_FILES} = 'gfs.t*z.pgrbf*';
+		my @grib_files = glob 'gfs.t*z.pgrbf*';
 		#estraggo lo header del grib_file riga per riga
 		my $wgrib_path = $self->{WGRIB_PATH};
 		my @grib_vars = `$wgrib_path -v $grib_files[0]`;
@@ -615,8 +623,8 @@ sub grib2ascii {
 		return 0;
 	}
 	
-	#$self->{GRIB_FILES} = 'gblav.t*z.pgrbf*';
-	my @grib_files = glob 'gblav.t*z.pgrbf*';
+	#$self->{GRIB_FILES} = 'gfs.t*z.pgrbf*';
+	my @grib_files = glob 'gfs.t*z.pgrbf*';
 	#estraggo lo header del grib_file riga per riga
 	my $wgrib_path = $self->{WGRIB_PATH};
 	my @grib_vars = `$wgrib_path -v $grib_files[0]`;
@@ -704,7 +712,7 @@ sub ascii2idrisi_avarage {
 	} else {
 		$real_key = $key;
 	}
-	my $glob_match = 'gblav_t*z_pgrbf*_'.$real_key.'-'.$value.'.txt';
+	my $glob_match = 'gfs_t*z_pgrbf*_'.$real_key.'-'.$value.'.txt';
 	#print $glob_match."\n";
 	my @sgribbed_files = glob $glob_match;
 
@@ -1254,21 +1262,43 @@ sub idrisi2png_exe {
   }
   if ($fileout=~m/TMP/) {
 		print OUT "
-*light yellow to dark red 
-'set rgb 81 130   0   0' 
-'set rgb 82 100   0   0' 
-'set rgb 21 255 250 170' 
-'set rgb 22 255 232 120' 
-'set rgb 23 255 192  60' 
-'set rgb 24 255 160   0' 
-'set rgb 25 255 115   0' 
-'set rgb 26 255  50   0' 
-'set rgb 27 225  20   0' 
-'set rgb 28 192   0   0' 
-'set rgb 29 165   0   0' 
+' set rgb 20 50 0 50'
+' set rgb 21 100 0 100'
+' set rgb 22 150 0 150'
+' set rgb 23 200 0 200'
+' set rgb 24 250 0 250'
+' set rgb 25 200 0 250'
+' set rgb 26 150 0 250'
+' set rgb 27 100 0 250'
+' set rgb 28 50 0 250'
+' set rgb 29 0 50 250'
+' set rgb 30 0 100 250'
+' set rgb 31 0 150 250'
+' set rgb 32 0 200 250'
+' set rgb 33 0 230 240'
+' set rgb 34 0 230 160'
+' set rgb 35 0 230 120'
+' set rgb 36 0 230 80'
+' set rgb 37 0 240 40'
+' set rgb 38 0 250 0'
+' set rgb 39 254 254 0'
+' set rgb 40 254 225 0'
+' set rgb 41 254 200 0'
+' set rgb 42 254 175 0'
+' set rgb 43 254 150 0'
+' set rgb 44 230 125 0'
+' set rgb 45 230 100 0'
+' set rgb 46 220 75 30'
+' set rgb 47 200 50 30'
+' set rgb 48 180 25 30'
+' set rgb 49 170 0 30'
+' set rgb 50 180 0 50'
+' set rgb 51 200 0 100'
+' set rgb 52 254 0 150'
+' set rgb 53 254 0 200'
 
-'set ccols 21 22 23 24 25 26 27 28 29'
-'set clevs 24 26 27 28 29 30 32 34'
+'set ccols 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49'
+'set clevs -42 -39 -36 -33 -30 -27 -24 -21 -18 -15 -12 -9 -6 -3 0 3 6 9 12 15 18 21 24 27 30 33 36 39 42'
 "; 
   }
   if ($fileout=~m/RH/) {
@@ -1521,8 +1551,8 @@ sub cleanUp {
 			
 		}
 		if($parameter eq 'grib'){
-			$self->_debug( "deleting: gblav*\n");
-			unlink (<gblav.t*>) ;
+			$self->_debug( "deleting: gfs*\n");
+			unlink (<gfs.t*>) ;
 			
 		}
 		if($parameter eq 'png'){
