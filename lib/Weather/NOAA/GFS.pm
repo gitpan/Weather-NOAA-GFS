@@ -15,9 +15,12 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.06";
+our $VERSION   = "0.07";
 
 ## VERSIONS INFOS
+#0.07	October 25 2005
+#	- added timeout control to prevent server overload and never ending scripts.
+#
 # 0.06  May 11 2005
 # 	- correction on download string to adapt to nomad's page name change
 # 	- correction on 'glab.t*z.pgrbf*' to 'gfs.t*z.pgrb*' 
@@ -168,7 +171,18 @@ sub _debug {
 	return 0;
 }
 
-
+sub _check_timeout {
+	my $self = shift;
+	my $start = $self->{START_TIME};
+	my $timeout = $self->{TIMEOUT} * 60;
+	my $now = time;
+	if(($now-$start)<=$timeout){
+		return
+	} else {
+		$self->_debug("Timeout!");
+		exit
+	}
+}
 
 sub _check_area_size {
 	my $self   = shift;
@@ -434,6 +448,7 @@ sub downloadGribFiles {
 	$self->_debug("Stringa Url: ".$STRINGA_URL);
 	
 	while ($#gribs<59) {
+		$self->_check_timeout();
  		my $tot_gribs=$#gribs+1;
  		 $self->_debug( "GRIB files in dir: $tot_gribs:60");
 	
@@ -1717,6 +1732,7 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
 		'mail_anonymous'    => 'my@mail.org',# mandatory to log NOAA ftp server
 		'gradsc_path' => 'gradsc',# mandatory, needed to create maps
 		'wgrib_path' => 'wgrib',# mandatory, needed to process NOAA GRIB files
+                'timeout'=> '30',#mandatory timeout in minute
 		'debug'    => 1, # 0 no output - 1 output
 		'logfile'    => 'weather-noaa-gfs.log',# optional
 		'cbarn_path' => 'cbarn.gs', #optional, needed to print image legend
@@ -1779,8 +1795,8 @@ Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
  	#"png",
 	"idrisi",
 	);
-
 $weather_gfs->cleanUp(@typesToDelete);
+
 
 =head1 DESCRIPTION
 

@@ -1,4 +1,4 @@
-Weather-NOAA-GFS version 0.05
+Weather-NOAA-GFS version 0.07
 =============================
 
 
@@ -38,19 +38,17 @@ add module GStat
 
 TO DO
 
-1) time control not to overload NOAA servers or to stop the script if it takes to much time.
-2) parameters in function to allow process of single or selected climate vectors (es: only rain and temperature).
-3) enlarge temperature palette for PNG output
-4) cleanUp function. To delete temporary file.
-5) working dir parameter.
-
+1) parameters in function to allow process of single or selected climate vectors (es: only rain and temperature).
+2) enlarge temperature palette for PNG output
+3) working dir parameter.
+4) caching the server response if positive to prevent multiple request not needed
 
 
 
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2004 by Lorenzo Becchi
+Copyright (C) 2005 by Lorenzo Becchi
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.5 or,
