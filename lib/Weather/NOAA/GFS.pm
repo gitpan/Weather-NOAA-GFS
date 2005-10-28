@@ -15,9 +15,12 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.07";
+our $VERSION   = "0.08";
 
 ## VERSIONS INFOS
+#0.08 Octuber 25 2005
+#	- documentation correction
+#
 #0.07	October 25 2005
 #	- added timeout control to prevent server overload and never ending scripts.
 #
@@ -1716,7 +1719,7 @@ __END__
 
 =head1 NAME
 
-Weather::NOAA::GFS - Perl extension for forecast climate maps from NOAA GFS site
+Weather::NOAA::GFS - Perl module for forecast weather maps from NOAA GFS site data
 
 =head1 SYNOPSIS
 
@@ -1801,7 +1804,7 @@ $weather_gfs->cleanUp(@typesToDelete);
 =head1 DESCRIPTION
 
 
-This module produces regional forecast climate maps from NOAA GFS site (http://nomad2.ncep.noaa.gov/ncep_data/). It
+This module produces regional forecast weather maps from NOAA GFS site (http://nomad2.ncep.noaa.gov/ncep_data/). It
  downloads rough data, transforms it into IDRISI (binary GIS format) and then
      in PNG maps. Output maps are for temperature, relative humidity,
      zonal wind, pressure and rainfall precipitation. The module requires
