@@ -15,14 +15,17 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.09";
+our $VERSION   = "0.10";
 
 ## VERSIONS INFOS
+#0.10	Octuber 26 2005
+#	- documentation corrections
+#
 #0.09	Octuber 26 2005
 #	- added server array check to find the active one
 #	
 #0.08	Octuber 25 2005
-#	- documentation correction
+#	- documentation corrections
 #
 #0.07	October 25 2005
 #	- added timeout control to prevent server overload and never ending scripts.
@@ -110,6 +113,7 @@ sub new {
 	$self->{R_PATH}       = $parameters{r_path}   if ( $parameters{r_path} );
 	$self->{GRADSC_PATH}       = $parameters{gradsc_path}   if ( $parameters{gradsc_path} );
 	$self->{WGRIB_PATH}       = $parameters{wgrib_path}   if ( $parameters{wgrib_path} );	
+	$self->{SERVER_LIST}       = $parameters{server_list}   if ( $parameters{server_list} );	
 
 
 
@@ -1768,7 +1772,7 @@ Weather::NOAA::GFS - Perl module for forecast weather maps from NOAA GFS site da
 		'logfile'    => 'weather-noaa-gfs.log',# optional
 		'cbarn_path' => 'cbarn.gs', #optional, needed to print image legend
 		'r_path' => 'R',# optional, needed to downscale
-		
+		'server_list' => 'nomad3.ncep.noaa.gov,nomad5.ncep.noaa.gov',#optional, server list to choose from		
   );
   
   
