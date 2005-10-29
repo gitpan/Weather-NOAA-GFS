@@ -15,10 +15,13 @@ require Exporter;
 
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw ( idrisi2png ascii2idrisi downloadGribFiles grib2ascii);
-our $VERSION   = "0.08";
+our $VERSION   = "0.09";
 
 ## VERSIONS INFOS
-#0.08 Octuber 25 2005
+#0.09	Octuber 26 2005
+#	- added server array check to find the active one
+#	
+#0.08	Octuber 25 2005
 #	- documentation correction
 #
 #0.07	October 25 2005
@@ -42,8 +45,14 @@ our $VERSION   = "0.08";
 
 
 my $LOGFILE = "forecast.log";
-my $URL_NOMAD_1_SH = "http://nomad5.ncep.noaa.gov/cgi-bin/ftp2u_gfs.sh";
-my $CERCO_FTP = 'ftp://nomad5.ncep.noaa.gov/pub/NOMAD_1hr/';
+
+#
+# OLD SERVER VARIABLES - to be deleted
+#
+#my $SERVER_1 = 'nomad5.ncep.noaa.gov';
+#my $SERVER_2 = 'nomad3.ncep.noaa.gov';
+#my $URL_NOMAD_1_SH = "http://nomad5.ncep.noaa.gov/cgi-bin/ftp2u_gfs.sh";
+#my $CERCO_FTP = 'ftp://nomad5.ncep.noaa.gov/pub/NOMAD_1hr/';
 
 #------------------------------------------------------------------------
 # Constructor
@@ -61,6 +70,7 @@ sub new {
 	$self->{TEMP_DIR}  = "./";#working dir
 	$self->{DEST_DIR}  = "./";#png images destination dir
 	$self->{MAIL_ANONYMOUS} = undef;#obbligatorio
+	$self->{SERVER_LIST} = "nomad1.ncep.noaa.gov,nomad5.ncep.noaa.gov,nomad3.ncep.noaa.gov,nomad2.ncep.noaa.gov";#obbligatorio
 
 	# quadro
 	$self->{MINLON}  = undef;#obbligatorio
@@ -230,7 +240,7 @@ sub _check_area_size {
 		$error = 1;
 	}
 	#controllo che il valore assoluto fra massimi e minimi sia superiore a ...
-	## NOTA -> Capecchi -> è giusta questa cosa?
+	## NOTA -> Controllare
 	if($d_lat<10) {
 		$self->_debug("Il valore assoluto della differenza fra Maxlat e Minlat deve essere superiore a 10");
 		$error = 1;
@@ -270,6 +280,23 @@ sub checkSetup {
 }
 
 #net stuff
+
+sub get_server {
+	my $self = shift;
+	my @servers = split(/,/,$self->{SERVER_LIST});
+
+	$self->_check_timeout();
+	foreach my $server (@servers) {
+		$self->_debug("Checking: ".$server);
+		if($self->check_string_on_url('FTP2U','http://'.$server.'/cgi-bin/ftp2u_gfs.sh')){
+			return $server;
+		}
+	}
+	$self->_debug("No server available!");
+	exit
+	# -> could be nice to make it recursive, like this it doesn't work.
+	#get_server($self);
+}
 
 sub check_string_on_url {
 	my $self = shift;
@@ -445,9 +472,10 @@ sub downloadGribFiles {
 	## VARS
 	my $ftp_trovato = undef;
 	
-
-	my $STRINGA_URL = "$URL_NOMAD_1_SH?file=gfs\.t00z\.pgrbf03&file=gfs\.t00z\.pgrbf06&file=gfs\.t00z\.pgrbf09&file=gfs\.t00z\.pgrbf12&file=gfs\.t00z\.pgrbf15&file=gfs\.t00z\.pgrbf18&file=gfs\.t00z\.pgrbf21&file=gfs\.t00z\.pgrbf24&file=gfs\.t00z\.pgrbf27&file=gfs\.t00z\.pgrbf30&file=gfs\.t00z\.pgrbf33&file=gfs\.t00z\.pgrbf36&file=gfs\.t00z\.pgrbf39&file=gfs\.t00z\.pgrbf42&file=gfs\.t00z\.pgrbf45&file=gfs\.t00z\.pgrbf48&file=gfs\.t00z\.pgrbf51&file=gfs\.t00z\.pgrbf54&file=gfs\.t00z\.pgrbf57&file=gfs\.t00z\.pgrbf60&file=gfs\.t00z\.pgrbf63&file=gfs\.t00z\.pgrbf66&file=gfs\.t00z\.pgrbf69&file=gfs\.t00z\.pgrbf72&file=gfs\.t00z\.pgrbf75&file=gfs\.t00z\.pgrbf78&file=gfs\.t00z\.pgrbf81&file=gfs\.t00z\.pgrbf84&file=gfs\.t00z\.pgrbf87&file=gfs\.t00z\.pgrbf90&file=gfs\.t00z\.pgrbf93&file=gfs\.t00z\.pgrbf96&file=gfs\.t00z\.pgrbf99&file=gfs\.t00z\.pgrbf102&file=gfs\.t00z\.pgrbf105&file=gfs\.t00z\.pgrbf108&file=gfs\.t00z\.pgrbf111&file=gfs\.t00z\.pgrbf114&file=gfs\.t00z\.pgrbf117&file=gfs\.t00z\.pgrbf120&file=gfs\.t00z\.pgrbf123&file=gfs\.t00z\.pgrbf126&file=gfs\.t00z\.pgrbf129&file=gfs\.t00z\.pgrbf132&file=gfs\.t00z\.pgrbf135&file=gfs\.t00z\.pgrbf138&file=gfs\.t00z\.pgrbf141&file=gfs\.t00z\.pgrbf144&file=gfs\.t00z\.pgrbf147&file=gfs\.t00z\.pgrbf150&file=gfs\.t00z\.pgrbf153&file=gfs\.t00z\.pgrbf156&file=gfs\.t00z\.pgrbf159&file=gfs\.t00z\.pgrbf162&file=gfs\.t00z\.pgrbf165&file=gfs\.t00z\.pgrbf168&file=gfs\.t00z\.pgrbf171&file=gfs\.t00z\.pgrbf174&file=gfs\.t00z\.pgrbf177&file=gfs\.t00z\.pgrbf180&wildcard=&lev_sfc=on&lev_1000_mb=on&lev_925_mb=on&lev_850_mb=on&var_APCP=on&var_PRES=on&var_RH=on&var_UGRD=on&var_VGRD=on&var_TMP=on&subregion=on&leftlon=$self->{MINLON}&rightlon=$self->{MAXLON}&toplat=$self->{MAXLAT}&bottomlat=$self->{MINLAT}&results=SAVE&rtime=3hr&machine=149.139.16.204&user=anonymous&passwd=&ftpdir=%2Fincoming_1hr&prefix=&dir=";
-	
+	my $server = $self->get_server();
+	my $server_string = 'http://'.$server.'/cgi-bin/ftp2u_gfs.sh';
+	my $STRINGA_URL = "$server_string?file=gfs\.t00z\.pgrbf03&file=gfs\.t00z\.pgrbf06&file=gfs\.t00z\.pgrbf09&file=gfs\.t00z\.pgrbf12&file=gfs\.t00z\.pgrbf15&file=gfs\.t00z\.pgrbf18&file=gfs\.t00z\.pgrbf21&file=gfs\.t00z\.pgrbf24&file=gfs\.t00z\.pgrbf27&file=gfs\.t00z\.pgrbf30&file=gfs\.t00z\.pgrbf33&file=gfs\.t00z\.pgrbf36&file=gfs\.t00z\.pgrbf39&file=gfs\.t00z\.pgrbf42&file=gfs\.t00z\.pgrbf45&file=gfs\.t00z\.pgrbf48&file=gfs\.t00z\.pgrbf51&file=gfs\.t00z\.pgrbf54&file=gfs\.t00z\.pgrbf57&file=gfs\.t00z\.pgrbf60&file=gfs\.t00z\.pgrbf63&file=gfs\.t00z\.pgrbf66&file=gfs\.t00z\.pgrbf69&file=gfs\.t00z\.pgrbf72&file=gfs\.t00z\.pgrbf75&file=gfs\.t00z\.pgrbf78&file=gfs\.t00z\.pgrbf81&file=gfs\.t00z\.pgrbf84&file=gfs\.t00z\.pgrbf87&file=gfs\.t00z\.pgrbf90&file=gfs\.t00z\.pgrbf93&file=gfs\.t00z\.pgrbf96&file=gfs\.t00z\.pgrbf99&file=gfs\.t00z\.pgrbf102&file=gfs\.t00z\.pgrbf105&file=gfs\.t00z\.pgrbf108&file=gfs\.t00z\.pgrbf111&file=gfs\.t00z\.pgrbf114&file=gfs\.t00z\.pgrbf117&file=gfs\.t00z\.pgrbf120&file=gfs\.t00z\.pgrbf123&file=gfs\.t00z\.pgrbf126&file=gfs\.t00z\.pgrbf129&file=gfs\.t00z\.pgrbf132&file=gfs\.t00z\.pgrbf135&file=gfs\.t00z\.pgrbf138&file=gfs\.t00z\.pgrbf141&file=gfs\.t00z\.pgrbf144&file=gfs\.t00z\.pgrbf147&file=gfs\.t00z\.pgrbf150&file=gfs\.t00z\.pgrbf153&file=gfs\.t00z\.pgrbf156&file=gfs\.t00z\.pgrbf159&file=gfs\.t00z\.pgrbf162&file=gfs\.t00z\.pgrbf165&file=gfs\.t00z\.pgrbf168&file=gfs\.t00z\.pgrbf171&file=gfs\.t00z\.pgrbf174&file=gfs\.t00z\.pgrbf177&file=gfs\.t00z\.pgrbf180&wildcard=&lev_sfc=on&lev_1000_mb=on&lev_925_mb=on&lev_850_mb=on&var_APCP=on&var_PRES=on&var_RH=on&var_UGRD=on&var_VGRD=on&var_TMP=on&subregion=on&leftlon=$self->{MINLON}&rightlon=$self->{MAXLON}&toplat=$self->{MAXLAT}&bottomlat=$self->{MINLAT}&results=SAVE&rtime=3hr&machine=149.139.16.204&user=anonymous&passwd=&ftpdir=%2Fincoming_1hr&prefix=&dir=";
+	my $ftp_server = 'ftp://'.$server.'/pub/NOMAD_1hr/';
 	$self->_debug("Stringa Url: ".$STRINGA_URL);
 	
 	while ($#gribs<59) {
@@ -456,7 +484,7 @@ sub downloadGribFiles {
  		 $self->_debug( "GRIB files in dir: $tot_gribs:60");
 	
 		if($self->check_string_on_url("transferred 60 out of 60 files",$STRINGA_URL)){	
-			 $ftp_trovato = $self->get_ftp_dir($CERCO_FTP,$STRINGA_URL);
+			 $ftp_trovato = $self->get_ftp_dir($ftp_server,$STRINGA_URL);
 			 $self->_debug("Ftp url from get_ftp_url: ".$ftp_trovato);	
 			if (length($ftp_trovato) > 0 ) {
 				$self->_ftpDownload($ftp_trovato);
@@ -465,11 +493,11 @@ sub downloadGribFiles {
 			}	  
 		} else {
 			if ($self->check_string_on_url("Sorry, machine is overloaded",$STRINGA_URL)) {
-				$self->_debug("Server $URL_NOMAD_1_SH overloaded");
+				$self->_debug("Server $server_string overloaded");
 			} elsif ($self->check_string_on_url("out of disk space",$STRINGA_URL)) {
-				$self->_debug("Server $URL_NOMAD_1_SH ran out of disk space");
+				$self->_debug("Server $server_string ran out of disk space");
 			} elsif ($self->check_string_on_url("too many ftp2u jobs now",$STRINGA_URL)) {
-				$self->_debug("Server $URL_NOMAD_1_SH too many ftp2u jobs now");
+				$self->_debug("Server $server_string too many ftp2u jobs now");
 			} else {
 				$self->_debug("Unknown error in download procedure.");
 			}
